@@ -6,5 +6,5 @@ Prior to go for classification of [Sentinel-2](https://www.esa.int/Our_Activitie
 A subset of atmospheric corrected surface reflectance of Sentinel-2 bands and feature class shape files are avilable for download as [rar](https://www.dropbox.com/s/wcllg9tkxsvge7r/Data.rar?dl=0), [7z](https://www.dropbox.com/s/fz3b8thtm3ogw19/Data.7z?dl=0) and [zip](https://www.dropbox.com/s/9neml6r8wtm8w6g/Data.zip?dl=0) formats.
 
 
-First, we will convert the polygons to 2.5-meter x 2.5 meter raster grid, and then convert them to spatial points. We will next extract values from Sentinel-2âs B2, B3, B4, B5, B6, B7, B8, B8A, B11 and B12 bands and add them to the point data set. We also convert all raster bands to spatial point data frame and then to a CSV file. This grid-point data file will be used for prediction of landuse classes.
+First, we will convert the polygons to 2.5-meter x 2.5 meter raster grid, and then convert them to spatial points. We will next extract values from Sentinel-2 Band's B2, B3, B4, B5, B6, B7, B8, B8A, B11 and B12 bands and add them to the point data set. We also convert all raster bands to spatial point data frame and then to a CSV file. This grid-point data file will be used for prediction of landuse classes.
 

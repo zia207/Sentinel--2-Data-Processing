@@ -1,0 +1,195 @@
+---
+title: ' Data processing'
+author: "Zia Ahmed, PhD, University at Buffalo"
+date: "April 5, 2018"
+output:
+  html_document: default
+  word_document: default
+---
+
+We have downloaded one scene of [Sentinel-2](https://www.esa.int/Our_Activities/Observing_the_Earth/Copernicus/Sentinel-2) multi-spectral images from [Copernicus Open Data Hub](https://scihub.copernicus.eu/dhus/#/home) that was acquired on September 21st, 2017. It covers most of the regions in Western New York area.The [spatial](https://earth.esa.int/web/sentinel/user-guides/sentinel-2-msi/resolutions/spatial) and [radiometric](https://earth.esa.int/web/sentinel/user-guides/sentinel-2-msi/resolutions/spatial) resolution of Sentinel-2 imagery varies by spectral band. Sentinel-2 data are acquired in 13 spectral bands in the VNIR and SWIR: four bands at 10 m: Band 2, Band 3, Band 4, and Band 8; six bands at 20 m: Band 5, Band 6, Band 7, Band 8A, Band 11, and Band 12; three bands at 60 m: Band 1, Band 9, and Band 10.
+
+we have used [Sen2Cor](https://www.esa.int/Our_Activities/Observing_the_Earth/Copernicus/Sentinel-2), a python based processor develop by [ESA](http://www.esa.int/ESA) for [Sentinel-2 Level 2A](https://sentinel.esa.int/web/sentinel/user-guides/document-library/-/asset_publisher/xlslt4309D5h/content/sentinel-2-msi-level-2a-product-definition;jsessionid=012C32D7FCD607BAB2110EBDA053BBC7.jvm1?redirect=https%3A%2F%2Fsentinel.esa.int%2Fweb%2Fsentinel%2Fuser-guides%2Fdocument-library%3Bjsessionid%3D012C32D7FCD607BAB2110EBDA053BBC7.jvm1%3Fp_p_id%3D101_INSTANCE_xlslt4309D5h%26p_p_lifecycle%3D0%26p_p_state%3Dnormal%26p_p_mode%3Dview%26p_p_col_id%3Dcolumn-1%26p_p_col_count%3D1%26_101_INSTANCE_xlslt4309D5h_keywords%3D%26_101_INSTANCE_xlslt4309D5h_advancedSearch%3Dfalse%26_101_INSTANCE_xlslt4309D5h_delta%3D75%26_101_INSTANCE_xlslt4309D5h_andOperator%3Dtrue) product for formatting and processing (such as atmospheric correction, aerosol optical thickness correction, water vapor retrieval, surface reflectance retrieval from TOA, geometric correction with DEM). All bands were resampled at 10 m resolution in [Sentinel Toolboxes](http://step.esa.int/main/download/).In this tutorial we will use a sub-set of images with bands 2, 3, 4, 5, 6, 7, 8, 8A, 11 and 12.
+Prior to go for classification of [Sentinel-2](https://www.esa.int/Our_Activities/Observing_the_Earth/Copernicus/Sentinel-2) satellite image using a Deep Neural Network, we need to process the spatial data. Then we will train our Deep Neural Network model  with 5 feature classes extracted from Google Earth imagery: (1) parking/road/pavement, (2) building, (3) trees/bushes, (4) grass, and (5) water bodies. We used on-screen digitization in [QGIS](https://www.qgis.org/en/site/) to create polygons representing members of these feature classes.
+A subset of atmospheric corrected surface reflectance of Sentinel-2 bands and feature class shape files are avilable for download as [rar](https://www.dropbox.com/s/wcllg9tkxsvge7r/Data.rar?dl=0), [7z](https://www.dropbox.com/s/fz3b8thtm3ogw19/Data.7z?dl=0) and [zip](https://www.dropbox.com/s/9neml6r8wtm8w6g/Data.zip?dl=0) formats.
+
+
+First, we will convert the polygons to 2.5-meter x 2.5 meter raster grid, and then convert them to spatial points. We will next extract values from Sentinel-2’s B2, B3, B4, B5, B6, B7, B8, B8A, B11 and B12 bands and add them to the point data set. We also convert all raster bands to spatial point data frame and then to a CSV file. This grid-point data file will be used for prediction of landuse classes.
+
+
+
+#### Load R packages 
+
+```{r message=F, warning=F}
+library(rgdal)  # spatial data processing
+library(raster) # raster processing
+library(plyr)   # data manipulation 
+library(dplyr)  # data manipulation 
+library(RStoolbox) # ploting spatial data 
+library(RColorBrewer)
+library(ggplot2)
+library(sp)
+```
+
+#### Set working directory
+
+```{r}
+setwd("F:\\My_GitHub\\DNN_H20_R")
+dsn<-("F:\\My_GitHub\\DNN_H20_R\\Data")
+```
+
+#### Import training polygon layer 
+
+```{r}
+poly <- readOGR(dsn=dsn, "Training_layer") 
+ID<-read.csv("Data\\Landuse_ID.csv", header=T)
+ID
+```
+
+#### Convert polygon to raster
+#### Raster extent (we will use any band of Sentinel-2 to set raster extent, we use B2 for define extent)
+
+```{r}
+b2<-raster("Data\\B2.tif") # 
+crs(b2) <- "+proj=utm +zone=17N +ellps=WGS84 +datum=WGS84 +units=m +no_defs" 
+extent=extent(b2)
+```
+
+#### Convert to raster (2.5 m grid size)
+
+```{r}
+r <- raster(extent, resolution=2.5,
+            crs = '+proj=utm +zone=17N +ellps=WGS84 +datum=WGS84 +units=m +no_defs ')
+extent(r) <- extent(poly)
+rp <- rasterize(poly, r, 'Class_ID')
+plot(rp)
+```
+
+#### Convert raster to data.frame and rename colum to "layer"" to Class_ID
+
+```{r}
+rp.df <- as.data.frame(rasterToPoints(rp))
+colnames(rp.df)[3] <- 'Class_ID'
+```
+
+#### Create a Spatial point Data frame
+
+```{r}
+xy <- rp.df[,c(1,2)]
+point.SPDF <- SpatialPointsDataFrame(coords = xy,
+                                data=rp.df,
+                               proj4string = CRS("+proj=utm +zone=17N +ellps=WGS84 +datum=WGS84 +units=m +no_defs"))
+```
+
+#### Load multi-band raster 
+
+```{r}
+multi=stack("Data//multi_bands.tif")
+# rename the bands
+names(multi) <- c("B2", "B3","B4","B5","B6","B7","B8","B8A","B11","B12")
+```
+
+#### Plot map
+
+```{r}
+
+# Natural Color
+p1<-ggRGB(multi, r=3, g=2, b=1, stretch = "lin")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+
+  ggtitle("Natural Color\n(R= Red, G= Green, B= Blue)")
+# False Color image
+p2<-ggRGB(multi, r=7, g=3, b=2, stretch = "lin")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+
+  ggtitle("False Color Infrared\n(R= NIR, G= Red,  B=Green)")
+source("multi_plot_function.r") # We need this function to plot multiple figures in one page
+#(http://www.cookbook-r.com/Graphs/Multiple_graphs_on_one_page_(ggplot2)/)
+multiplot(p1, p2, cols=2)
+```
+
+####  Save as a tiff file
+
+```{r}
+windows(width=6, height=4)
+tiff( file="FIGURE_Natural_False.tif", 
+      width=6, 
+      height=4,
+      units = "in", 
+      pointsize = 14, 
+      res=1600, bg = "white",
+      restoreConsole = TRUE,
+      compression =  "lzw")
+par(mar=c(5,5,2,1), oma=c(0,0,0,0))
+multiplot(p1, p2, cols=2)
+dev.off()
+
+```
+
+#### Extract raster values to point file
+
+```{r}
+point.df <- extract(multi, point.SPDF, df=TRUE, method='simple')
+```
+
+#### Combine with data frame
+
+```{r}
+point.mf<-cbind(rp.df,point.df)
+head(point.mf)
+```
+
+#### Keep values belong only to 5 classes
+
+```{r}
+point.train<-point.mf %>% 
+  select(x,y,Class_ID, B2, B3, B4, B5, B6,B7,B8,B8A,B11,B12) %>% 
+  filter(Class_ID >0) 
+```
+
+#### Add class ID and save as a CSV file 
+
+```{r}
+point<-join(point.train, ID, by="Class_ID", type="inner")
+write.csv(point, "point_data.csv", row.names=F)
+```
+
+### Convert raster stack to CSV file
+#### First creat XY data-frame, will use Band B2
+
+```{r}
+grid.point <- data.frame(rasterToPoints(b2))
+# Remove B2 column
+grid.point$B2<-NULL
+```
+
+#### Convert to sptial point data frame and define projection
+
+```{r}
+coordinates(grid.point) <- ~x + y
+projection(grid.point) <- CRS("+proj=utm +zone=17N +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
+```
+
+#### Extract all bands values to grird.point
+
+```{r}
+df.grid<- extract(multi, grid.point, df=TRUE, method='simple')
+```
+
+#### Combine with grid.df (we need to add xy coordinated for mapping) and write as a CSV file
+
+```{r}
+grid<-cbind(as.data.frame(grid.point),df.grid)
+write.csv(grid, "grid_data.csv", row.names=F)
+head(grid)
+```
+
+
